@@ -1,0 +1,231 @@
+// Copyright HandsomeCheese
+#pragma once
+
+float3 CalPos( float3 a, float3 b, float4 p )
+{
+    float intersect = -1*(dot(a,p.xyz)+p.w)/dot(b,p.xyz);
+    return a+b*intersect;
+}
+
+float Mask(float2 UV)
+{
+	float2 mask = saturate(abs(floor(UV)));
+	return (1.0-mask.x)*(1.0-mask.y);
+}
+
+float2 Left(float3 Pos)
+{
+	return float2(1+Pos.z,Pos.y);
+}
+
+float2 Top(float3 Pos)
+{
+	return float2(Pos.x,1+Pos.z);
+}
+
+float2 Look(float3 Pos)
+{
+	return float2(Pos.x,Pos.y);
+}
+
+float3 Print3D(float2 Inuv,float3 CameraVec,float Steps,float2 PixelPos,MaterialFloat2 InDDX,MaterialFloat2 InDDY,Texture2D TexObj,SamplerState TexSampler){
+	float2 uvOut = Inuv+CameraVec.xy*(-1)/CameraVec.z;
+	float alpha = 0;
+	uint2 Random =  Rand3DPCG16( uint3( PixelPos, View.StateFrameIndexMod8 ) ).xy;
+	float i=0;
+
+	while (i<Steps){
+	float h = (i+Hammersley( i, Steps, Random ).x-.5)/Steps;
+	float2 uvCurrent = Inuv+CameraVec.xy*(-1+h)/dot(CameraVec,float3(0,0,1));
+	float2 intersect = TexObj.SampleGrad(GetMaterialSharedSampler(TexSampler,View.MaterialTextureBilinearClampedSampler),float2(uvCurrent),InDDX, InDDY).xy;
+	if( h > (1-intersect.y) && h < intersect.x )
+	{
+        if(uvCurrent.x > 0 && uvCurrent.x < 1 && uvCurrent.y > 0 && uvCurrent.y < 1)
+		{
+			uvOut = uvCurrent;
+			alpha = 1;
+		}
+	}
+	i++;
+}
+return float3(uvOut.x,uvOut.y,alpha);
+}
+
+float3 Print3D_Halton(float2 Inuv,float3 CameraVec,float Steps,float3 PixelPos,MaterialFloat2 InDDX,MaterialFloat2 InDDY,Texture2D TexObj,SamplerState TexSampler){
+	PixelPos = frac(PixelPos)+float3(1,1,1);
+	float Pixel = float(frac(abs(PixelPos.x+PixelPos.y+PixelPos.z))*1000);
+	float2 uvOut = Inuv+CameraVec.xy*(-1)/CameraVec.z;
+	float alpha = 0;
+	//uint2 Random =  Rand3DPCG16( uint3( Pixel.x, Pixel.y, View.StateFrameIndexMod8 ) ).xy;
+	uint2 Random = uint2(1,1);
+	float i=0;
+
+	while (i<Steps){
+	float h = (i+Hammersley( i*Pixel, Steps, Random ).y-.5)/Steps;
+	float2 uvCurrent = Inuv+CameraVec.xy*(-1+h)/dot(CameraVec,float3(0,0,1));
+	float2 intersect = TexObj.SampleGrad(GetMaterialSharedSampler(TexSampler,View.MaterialTextureBilinearClampedSampler),float2(uvCurrent),InDDX, InDDY).xy;
+	if( h > (1-intersect.y) && h < intersect.x )
+	{
+        if(uvCurrent.x > 0 && uvCurrent.x < 1 && uvCurrent.y > 0 && uvCurrent.y < 1)
+		{
+			uvOut = uvCurrent;
+			alpha = 1;
+		}
+	}
+	i++;
+}
+
+return float3(uvOut.x,uvOut.y,alpha);
+}
+
+
+
+
+
+float4 Print3D_Plus(MaterialFloat2 Inuv,MaterialFloat3 CameraVec,MaterialFloat Steps,MaterialFloat2 PixelPos,MaterialFloat2 InDDX,MaterialFloat2 InDDY,Texture2D TexObjFB, SamplerState TexObjFBSampler ,Texture2D TexObjLR, SamplerState TexObjLRSampler ,Texture2D TexObjTB, SamplerState TexObjTBSampler ,Texture2D TexSamF, SamplerState TexSamFSampler ,Texture2D TexSamL, SamplerState TexSamLSampler ,Texture2D TexSamT, SamplerState TexSamTSampler ,MaterialFloat4 Background){
+	float3 PosFB = CalPos(float3(Inuv,0),CameraVec,float4(0,0,1,1));
+	float3 PosLR = CalPos(float3(Inuv,0),CameraVec,float4(1,0,0,-1));
+	float3 PosTB = CalPos(float3(Inuv,0),CameraVec,float4(0,1,0,-1));
+
+	float2 uvOutFB = Look(PosFB);
+	float2 uvOutLR = Left(PosLR);
+	float2 uvOutTB = Top(PosTB);
+
+	float4 Color = Background;
+	float2 uvOut = uvOutFB;
+	float alpha = 0;
+	uint2 Random =  Rand3DPCG16( uint3( PixelPos, View.StateFrameIndexMod8 ) ).xy;
+	float tolerancesX = abs( dot(normalize(CameraVec.xz),(float2(0,1))));
+	float tolerancesY = abs( dot(normalize(CameraVec.yz),(float2(0,1))));//tolerancesY小于一定值用于将部分内容指定为由FB渲染
+	float i=0,j=0,k=0;
+	float type = 0;
+	float stop = 1;
+			
+		
+
+			while (i<Steps && stop>0.1)
+			{
+			k=0;
+			float hFB = (i+Hammersley( i, Steps, Random ).x-.5)/Steps;
+			PosFB = CalPos(float3(Inuv,0),CameraVec,float4(0,0,1,1 - hFB));
+			float2 uvCurrentFB = Look(PosFB);
+			float2 intersectFB = TexObjFB.SampleGrad(GetMaterialSharedSampler(TexObjFBSampler,View.MaterialTextureBilinearClampedSampler),float2(uvCurrentFB),InDDX, InDDY).xy;
+	
+			if( hFB > (1-intersectFB.y) && hFB < intersectFB.x)
+			{
+				if(uvCurrentFB.x >= 0 && uvCurrentFB.x <= 1 && uvCurrentFB.y >= 0 && uvCurrentFB.y <= 1)
+				{
+	
+					
+					
+					
+		while(k<Steps && stop>0.1)
+		{
+			j=0;
+			float hTB = (k+Hammersley( k, Steps, Random ).x-.5)/Steps;
+			PosTB = CalPos(float3(Inuv,0),CameraVec,float4(0,1,0,-1 + hTB));
+			float2 uvCurrentTB = Top(PosTB);
+			float2 intersectTB = TexObjTB.SampleGrad(GetMaterialSharedSampler(TexObjTBSampler,View.MaterialTextureBilinearClampedSampler),float2(uvCurrentTB),InDDX, InDDY).xy;
+							
+			if( hTB > (1-intersectTB.y) && hTB < intersectTB.x  || tolerancesY>0.99)
+			{
+				if(uvCurrentTB.x >= 0 && uvCurrentTB.x <= 1 && uvCurrentTB.y >= 0 && uvCurrentTB.y <= 1  || tolerancesY>0.99)
+				{
+							
+							
+							
+							
+							
+		while(j<Steps && stop>0.1)
+		{
+		float hLR = (j+Hammersley( j, Steps, Random ).x-.5)/Steps;
+		PosLR = CalPos(float3(Inuv,0),CameraVec,float4(1,0,0,-1 + hLR));
+		float2 uvCurrentLR = Left(PosLR);
+		float2 intersectLR = TexObjLR.SampleGrad(GetMaterialSharedSampler(TexObjLRSampler,View.MaterialTextureBilinearClampedSampler),float2(uvCurrentLR),InDDX, InDDY).xy;
+					
+		if( hLR > (1-intersectLR.y) && hLR < intersectLR.x || tolerancesX>0.98)
+		{
+			if(uvCurrentLR.x >= 0 && uvCurrentLR.x <= 1 && uvCurrentLR.y >= 0 && uvCurrentLR.y <= 1   || tolerancesX>0.98)
+			{	
+
+							if( (hLR >= intersectLR.x - 1/Steps - 0.01  || hLR <= (1-intersectLR.y) + 1/Steps + 0.01  ) && tolerancesX<0.982)
+							{
+								type=3;
+								alpha=1;
+								uvOut = uvCurrentLR;	
+								if(CameraVec.x>=0)
+								{
+								stop=0;
+								break;
+								}
+							}							
+							else if( (hTB >= intersectTB.x - 1/Steps - 0.01  || hTB <= (1-intersectTB.y) + 1/Steps + 0.01  ) && tolerancesY<0.992)
+							{
+								type=2;
+								alpha=1;
+								uvOut = uvCurrentTB;
+								if(CameraVec.y>=0)
+								{
+								stop=0;
+								break;
+								}
+							}
+							else
+							{
+								uvOut = uvCurrentFB;
+								type = 1;
+								alpha = 1;
+							}
+
+						
+			}
+		}
+		j++;
+		}		
+		
+		
+		
+		
+		
+				}
+			}
+			k++;
+		}
+		
+		
+				
+				}
+
+			}
+			i++;
+			}
+
+
+if(type == 1)
+{
+	Color = Texture2DSampleBias(TexSamF, GetMaterialSharedSampler(TexSamFSampler,View.MaterialTextureBilinearClampedSampler), uvOut,0);
+}
+else if(type == 2)
+{
+	Color = Texture2DSampleBias(TexSamT, GetMaterialSharedSampler(TexSamTSampler,View.MaterialTextureBilinearClampedSampler), uvOut,0);
+}
+else if(type == 3)
+{
+	Color = Texture2DSampleBias(TexSamL, GetMaterialSharedSampler(TexSamLSampler,View.MaterialTextureBilinearClampedSampler), uvOut,0);
+}
+
+return float4(Color.xyz,alpha);
+}
+
+
+
+							
+
+
+float4 Sampler(Texture2D TextureObject,float3 Info,float4 Background,SamplerState TexSampler){
+	float4 end = float4( 0, 0, 0, 0);
+	end = Texture2DSampleBias(TextureObject, GetMaterialSharedSampler(TexSampler,View.MaterialTextureBilinearClampedSampler), Info.xy,0);
+	return lerp(Background,end,Info.z);
+}
+
+

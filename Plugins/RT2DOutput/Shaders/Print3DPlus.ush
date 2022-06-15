@@ -1,0 +1,29 @@
+// Copyright HandsomeCheese
+#pragma once
+
+float3 CalPos( float3 a, float3 b, float4 p )
+{
+    float intersect = -1*(dot(a,p.xyz)+p.w)/dot(b,p.xyz);
+    return a+b*intersect;
+}
+
+float Mask(float2 UV)
+{
+	float2 mask = saturate(abs(floor(UV)));
+	return (1.0-mask.x)*(1.0-mask.y);
+}
+
+float2 Left(float3 Pos)
+{
+	return float2(Pos.z*-1,Pos.y);
+}
+
+float2 Top(float3 Pos)
+{
+	return float2(Pos.x,Pos.z*-1);
+}
+
+float2 Look(float3 Pos)
+{
+	return float2(Pos.x,Pos.y);
+}
